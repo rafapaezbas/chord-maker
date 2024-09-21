@@ -4,8 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define INPUT_DEVICE_ID  3
-#define OUTPUT_DEVICE_ID 2
 #define NOTE_ON          127
 #define TOUCH_NOTE       144
 #define HEADER_LENGTH    7
@@ -38,7 +36,7 @@ list_midi_devices () {
   return 0;
 }
 
-int
+int32_t
 init_midi_input_stream (PmStream **stream, uint8_t input_device_id) {
   PmError result;
   result = Pm_OpenInput(stream, input_device_id, NULL, 512, NULL, NULL);
@@ -51,7 +49,7 @@ init_midi_input_stream (PmStream **stream, uint8_t input_device_id) {
   return 0;
 }
 
-int
+int32_t
 init_midi_output_stream (PmStream **stream, uint8_t output_device_id) {
   PmError result;
   result = Pm_OpenOutput(stream, output_device_id, NULL, 512, NULL, NULL, 0);
@@ -103,12 +101,15 @@ main (int32_t argc, char **argv) {
     return 1;
   }
 
-  if (argc > 0 && strcmp(argv[0], "list") == 0) {
-    return list_midi_devices();
+  if (argc > 1 && strcmp(argv[1], "list") == 0) return list_midi_devices();
+
+  if (argc != 3) {
+    printf("Initialization failed, missing input device id and output device id args\n");
+    return 0;
   }
 
-  uint8_t input_device_id = 3;
-  uint8_t output_device_id = 2;
+  uint8_t input_device_id = atoi(argv[1]);
+  uint8_t output_device_id = atoi(argv[2]);
 
   PmStream *midi_input_stream;
   PmStream *midi_output_stream;
