@@ -4,8 +4,8 @@
 #include <string.h>
 #include <portmidi.h>
 
-#define INPUT_DEVICE_ID 3
-#define OUTPUT_DEVICE_ID 2
+#define INPUT_DEVICE_ID 1
+#define OUTPUT_DEVICE_ID 3
 #define NOTE_ON 127
 #define TOUCH_NOTE 144
 #define HEADER_LENGTH 7
