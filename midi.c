@@ -9,7 +9,7 @@
 #define NOTE_ON 127
 #define TOUCH_NOTE 144
 #define HEADER_LENGTH 7
-#define EOX_LENGTH 2
+#define EOX_LENGTH 1
 
 int32_t last_message = -1;
 
@@ -69,10 +69,10 @@ bool read_midi_message (PmStream* stream, PmEvent* event) {
 
 void write_midi_message (PmStream* stream, uint8_t* data, int32_t length) {
     uint8_t header[] = { 240, 0, 32, 41, 2, 24, 10 };
-    uint8_t eox[] = { 10, 247 };
-    uint8_t* msg = malloc((HEADER_LENGTH + EOX_LENGTH + 1) * sizeof(uint8_t));
+    uint8_t eox[] = { 247 };
+    uint8_t* msg = malloc((HEADER_LENGTH + EOX_LENGTH + length) * sizeof(uint8_t));
     memcpy(msg, header, HEADER_LENGTH * sizeof(uint8_t));
-    memcpy(msg + HEADER_LENGTH, data, sizeof(uint8_t));
+    memcpy(msg + HEADER_LENGTH, data, length * sizeof(uint8_t));
     memcpy(msg + HEADER_LENGTH + length, eox, EOX_LENGTH * sizeof(uint8_t));
     Pm_WriteSysEx(stream, 0, msg);
 }
@@ -93,8 +93,9 @@ int main(void) {
             int32_t data2 = Pm_MessageData2(event.message);
 
             if (status == TOUCH_NOTE && data2 == NOTE_ON) {
-                uint8_t data[] = { data1 };
-                write_midi_message(midi_output_stream, data, 1);
+                uint8_t color = 48;
+                uint8_t data[] = { data1, color };
+                write_midi_message(midi_output_stream, data, 2);
             }
         }
     }
