@@ -1,4 +1,5 @@
 compile:
+	rm build/midi.exe
 	gcc -o build/midi.exe midi.c -lportmidi
 
 compile-list:

@@ -1,12 +1,15 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <portmidi.h>
 
 #define INPUT_DEVICE_ID 3
 #define OUTPUT_DEVICE_ID 2
 #define NOTE_ON 127
 #define TOUCH_NOTE 144
+#define HEADER_LENGTH 7
+#define EOX_LENGTH 2
 
 int32_t last_message = -1;
 
@@ -64,6 +67,16 @@ bool read_midi_message (PmStream* stream, PmEvent* event) {
     return new_message;
 }
 
+void write_midi_message (PmStream* stream, uint8_t* data, int32_t length) {
+    uint8_t header[] = { 240, 0, 32, 41, 2, 24, 10 };
+    uint8_t eox[] = { 10, 247 };
+    uint8_t* msg = malloc((HEADER_LENGTH + EOX_LENGTH + 1) * sizeof(uint8_t));
+    memcpy(msg, header, HEADER_LENGTH * sizeof(uint8_t));
+    memcpy(msg + HEADER_LENGTH, data, sizeof(uint8_t));
+    memcpy(msg + HEADER_LENGTH + length, eox, EOX_LENGTH * sizeof(uint8_t));
+    Pm_WriteSysEx(stream, 0, msg);
+}
+
 int main(void) {
     PmStream* midi_input_stream;
     PmStream* midi_output_stream;
@@ -79,13 +92,9 @@ int main(void) {
             int32_t data1 = Pm_MessageData1(event.message);
             int32_t data2 = Pm_MessageData2(event.message);
 
-            printf("status %d \n", status);
-            printf("data1 %d \n", data1);
-            printf("data2 %d \n", data2);
-
             if (status == TOUCH_NOTE && data2 == NOTE_ON) {
-                unsigned char msg[] = { 240, 0, 32, 41, 2, 24, 10, data1, 10, 247 };
-                Pm_WriteSysEx(midi_output_stream, 0, msg);
+                uint8_t data[] = { data1 };
+                write_midi_message(midi_output_stream, data, 1);
             }
         }
     }
