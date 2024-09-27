@@ -35,11 +35,17 @@ uint8_t grades[GRADES_LENGTH][CHORD_VOICES] = {
   {6, 8, 10, 12, 14},
   {7, 9, 11, 13, 15}};
 
+PmStream *launchpad_midi_input_stream;
+PmStream *launchpad_midi_output_stream;
+PmStream *external_midi_output_stream;
+
 typedef struct State {
   int32_t last_message;
   int32_t root;
   uint8_t scale;
 } State;
+
+State state;
 
 typedef struct Point {
   uint8_t x;
@@ -228,33 +234,14 @@ main (int32_t argc, char **argv) {
   uint8_t launchpad_output_device_id = atoi(argv[2]);
   uint8_t external_output_device_id = atoi(argv[3]);
 
-  PmStream *launchpad_midi_input_stream;
-  PmStream *launchpad_midi_output_stream;
-  PmStream *external_midi_output_stream;
   init_midi_input_stream(&launchpad_midi_input_stream, launchpad_input_device_id);
   init_midi_output_stream(&launchpad_midi_output_stream, launchpad_output_device_id);
   init_midi_output_stream(&external_midi_output_stream, external_output_device_id);
 
-  State state;
   init_state(&state);
 
   uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH];
   create_page_chords(chords);
-
-  /*
-  for (int i = 0; i < SCALES_LENGTH; i++) {
-    for (int j = 0; j < WIDTH; j++) {
-      for (int k = 0; k < GRADES_LENGTH; k++) {
-        printf("\n");
-        for (int l = 0; l < GRADE_LENGTH; l++) {
-          printf("-%d-", chords[i][j][k][l]);
-        }
-      }
-      printf("\n++++++++++++++++++++++++++++++++++\n");
-    }
-    printf("\n----------------------------------\n");
-  }
-  */
 
   // main loop
   while (1) {
@@ -265,10 +252,16 @@ main (int32_t argc, char **argv) {
       int32_t data2 = Pm_MessageData2(event.message);
 
       if (status == NOTE_ON && data2 == 127) {
+        uint8_t color = 48;
+        uint8_t data[] = {data1, color};
+        write_midi_message(launchpad_midi_output_stream, data, 2);
         send_chord_on(external_midi_output_stream, &state, int_to_point(data1), chords);
       }
 
       if (status == NOTE_ON && data2 == 0) {
+        uint8_t color = 0;
+        uint8_t data[] = {data1, color};
+        write_midi_message(launchpad_midi_output_stream, data, 2);
         send_chord_off(external_midi_output_stream, &state, int_to_point(data1), chords);
       }
     }
