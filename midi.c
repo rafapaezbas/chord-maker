@@ -1,8 +1,10 @@
 #include <portmidi.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define NOTE_ON       144
 #define NOTE_OFF      128
@@ -17,6 +19,10 @@
 #define ROOT          60
 #define CHORD_VOICES  7
 #define WIDTH         8
+#define HEIGHT        8
+
+// Color
+#define PURPLE 48
 
 uint8_t scales[SCALES_LENGTH][SCALE_LENGTH] = {
   {1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1},
@@ -40,6 +46,7 @@ PmStream *launchpad_midi_output_stream;
 PmStream *external_midi_output_stream;
 
 typedef struct State {
+  bool running;
   int32_t last_message;
   int32_t root;
   uint8_t scale;
@@ -52,12 +59,27 @@ typedef struct Point {
   uint8_t y;
 } Point;
 
+void
+handle_sigint () {
+  state.running = false;
+  Pm_Close(launchpad_midi_input_stream);
+  Pm_Close(launchpad_midi_output_stream);
+  Pm_Close(external_midi_output_stream);
+  Pm_Terminate();
+  exit(0);
+}
+
 Point
 int_to_point (uint8_t n) {
   struct Point p;
   p.x = (n % 10) - 1;
   p.y = ((uint8_t) n / 10) - 1;
   return p;
+}
+
+uint8_t
+point_to_int (Point p) {
+  return (p.y * 10) + p.x + 11;
 }
 
 void
@@ -97,6 +119,7 @@ void
 init_state (State *state) {
   state->last_message = -1;
   state->scale = 0;
+  state->running = true;
 }
 
 int32_t
@@ -170,13 +193,19 @@ read_midi_message (PmStream *stream, PmEvent *event, State *state) {
 }
 
 void
-write_midi_message (PmStream *stream, uint8_t *data, int32_t length) {
+write_launchpad_midi_message (PmStream *stream, uint8_t *data, int32_t length) {
   uint8_t header[] = {240, 0, 32, 41, 2, 24, 10};
   uint8_t eox[] = {247};
   uint8_t msg[HEADER_LENGTH + EOX_LENGTH + length];
   memcpy(msg, header, HEADER_LENGTH * sizeof(uint8_t));
   memcpy(msg + HEADER_LENGTH, data, length * sizeof(uint8_t));
   memcpy(msg + HEADER_LENGTH + length, eox, EOX_LENGTH * sizeof(uint8_t));
+  Pm_WriteSysEx(stream, 0, msg);
+}
+
+void
+write_launchpad_set_all_midi_message (PmStream *stream, uint8_t color) {
+  uint8_t msg[] = {240, 0, 32, 41, 2, 24, 14, color, 247};
   Pm_WriteSysEx(stream, 0, msg);
 }
 
@@ -214,8 +243,41 @@ send_chord_off (PmStream *stream, State *state, Point point, uint8_t chords[SCAL
   }
 }
 
+void
+render_state () {
+  size_t grid_data_length = PAGE_WIDTH * PAGE_HEIGHT * 2;
+  uint8_t grid[grid_data_length];
+  for (uint8_t x = 0; x < PAGE_WIDTH; x++) {
+    for (uint8_t y = 0; y < PAGE_HEIGHT; y++) {
+      Point p = {x, y};
+      uint8_t n = point_to_int(p);
+      uint8_t data[] = {n, x};
+      memcpy(grid + (x * PAGE_WIDTH + y) * 2, data, 2 * sizeof(uint8_t));
+    }
+  }
+
+  size_t scale_data_length = HEIGHT * 2;
+  uint8_t scale[scale_data_length];
+  uint8_t offset = 19;
+  for (uint8_t i = 0; i < HEIGHT; i++) {
+    uint8_t color = state.scale == i ? PURPLE : 0;
+    uint8_t data[] = {(i * 10) + offset, color};
+    memcpy(scale + (i * 2), data, 2 * sizeof(uint8_t));
+  }
+
+  size_t message_data_length = grid_data_length + scale_data_length;
+  uint8_t message[message_data_length];
+  memcpy(message, grid, grid_data_length * sizeof(uint8_t));
+  memcpy(message + grid_data_length, scale, scale_data_length * sizeof(uint8_t));
+
+  write_launchpad_midi_message(launchpad_midi_output_stream, message, message_data_length);
+}
+
 int32_t
 main (int32_t argc, char **argv) {
+  // Register the signal handler for SIGINT
+  signal(SIGINT, handle_sigint);
+
   PmError result;
   result = Pm_Initialize();
   if (result != pmNoError) {
@@ -244,32 +306,32 @@ main (int32_t argc, char **argv) {
   create_page_chords(chords);
 
   // main loop
-  while (1) {
+  while (state.running) {
     PmEvent event;
     if (read_midi_message(launchpad_midi_input_stream, &event, &state)) {
       int32_t status = Pm_MessageStatus(event.message);
       int32_t data1 = Pm_MessageData1(event.message);
       int32_t data2 = Pm_MessageData2(event.message);
 
-      if (status == NOTE_ON && data2 == 127) {
-        uint8_t color = 48;
-        uint8_t data[] = {data1, color};
-        write_midi_message(launchpad_midi_output_stream, data, 2);
+      if (data1 % 10 == 9) {
+        state.scale = (uint8_t) (data1 / 10) - 1;
+      }
+
+      else if (status == NOTE_ON && data2 == 127) {
+        // uint8_t color = PURPLE;
+        // uint8_t data[] = {data1, color};
+        // write_launchpad_midi_message(launchpad_midi_output_stream, data, 2);
         send_chord_on(external_midi_output_stream, &state, int_to_point(data1), chords);
       }
 
-      if (status == NOTE_ON && data2 == 0) {
-        uint8_t color = 0;
-        uint8_t data[] = {data1, color};
-        write_midi_message(launchpad_midi_output_stream, data, 2);
+      else if (status == NOTE_ON && data2 == 0) {
+        // uint8_t color = 0;
+        // uint8_t data[] = {data1, color};
+        // write_launchpad_midi_message(launchpad_midi_output_stream, data, 2);
         send_chord_off(external_midi_output_stream, &state, int_to_point(data1), chords);
       }
+
+      render_state();
     }
   }
-
-  Pm_Close(launchpad_midi_input_stream);
-  Pm_Close(launchpad_midi_output_stream);
-  Pm_Close(external_midi_output_stream);
-  Pm_Terminate();
-  return 0;
 }
