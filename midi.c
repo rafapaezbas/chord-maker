@@ -6,8 +6,12 @@
 #include <string.h>
 #include <unistd.h>
 
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
 #define NOTE_ON       144
 #define NOTE_OFF      128
+#define CONTROL       176
 #define HEADER_LENGTH 7
 #define EOX_LENGTH    1
 #define SCALES_LENGTH 6
@@ -22,8 +26,10 @@
 #define HEIGHT        8
 
 // Color
-#define PURPLE 48
-#define WHITE  2
+#define PURPLE       48
+#define WHITE        2
+#define BLUE         39
+#define COLOR_OFFSET 10
 
 uint8_t scales[SCALES_LENGTH][SCALE_LENGTH] = {
   {1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1},
@@ -52,6 +58,8 @@ typedef struct State {
   int32_t root;
   uint8_t scale;
   bool pressed[64];
+  int8_t chord_modifier[64];
+  uint8_t last_pressed[2];
 } State;
 
 State state;
@@ -135,6 +143,10 @@ init_state (State *state) {
   state->last_message = -1;
   state->scale = 0;
   state->running = true;
+  for (size_t i = 0; i < 64; i++)
+    state->chord_modifier[i] = 0;
+  for (size_t i = 0; i < 2; i++)
+    state->last_pressed[i] = 0;
 }
 
 int32_t
@@ -259,14 +271,26 @@ send_chord_off (PmStream *stream, State *state, Point point, uint8_t chords[SCAL
 }
 
 void
-render_state () {
+increase_chord_modifier (State *state) {
+  uint8_t n = point_to_int(midi_to_point(state->last_pressed[1]));
+  state->chord_modifier[n] = MIN(state->chord_modifier[n] + 1, 2);
+}
+
+void
+decrease_chord_modifier (State *state) {
+  uint8_t n = point_to_int(midi_to_point(state->last_pressed[1]));
+  state->chord_modifier[n] = MAX(state->chord_modifier[n] - 1, -2);
+}
+
+void
+render_state (State *state) {
   size_t grid_data_length = PAGE_WIDTH * PAGE_HEIGHT * 2;
   uint8_t grid[grid_data_length];
   for (uint8_t x = 0; x < PAGE_WIDTH; x++) {
     for (uint8_t y = 0; y < PAGE_HEIGHT; y++) {
       Point p = {x, y};
       uint8_t n = point_to_midi(p);
-      uint8_t color = state.pressed[point_to_int(p)] ? PURPLE : WHITE;
+      uint8_t color = state->pressed[point_to_int(p)] ? PURPLE : x * y + COLOR_OFFSET; // root color or plain?
       uint8_t data[] = {n, color};
       memcpy(grid + (x * PAGE_WIDTH + y) * 2, data, 2 * sizeof(uint8_t));
     }
@@ -276,15 +300,36 @@ render_state () {
   uint8_t scale[scale_data_length];
   uint8_t offset = 19;
   for (uint8_t i = 0; i < HEIGHT; i++) {
-    uint8_t color = state.scale == i ? PURPLE : 0;
+    uint8_t color = state->scale == i ? PURPLE : 0;
     uint8_t data[] = {(i * 10) + offset, color};
     memcpy(scale + (i * 2), data, 2 * sizeof(uint8_t));
   }
 
-  size_t message_data_length = grid_data_length + scale_data_length;
+  size_t modifier_data_length = 2 * 2;
+  uint8_t modifier[scale_data_length];
+  uint8_t n = point_to_int(midi_to_point(state->last_pressed[1]));
+  if (state->chord_modifier[n] == 2) {
+    uint8_t data[] = {104, BLUE, 105, 0};
+    memcpy(modifier, data, 4 * sizeof(uint8_t));
+  } else if (state->chord_modifier[n] == 1) {
+    uint8_t data[] = {104, WHITE, 105, 0};
+    memcpy(modifier, data, 4 * sizeof(uint8_t));
+  } else if (state->chord_modifier[n] == -1) {
+    uint8_t data[] = {104, 0, 105, WHITE};
+    memcpy(modifier, data, 4 * sizeof(uint8_t));
+  } else if (state->chord_modifier[n] == -2) {
+    uint8_t data[] = {104, 0, 105, BLUE};
+    memcpy(modifier, data, 4 * sizeof(uint8_t));
+  } else {
+    uint8_t data[] = {104, 0, 105, 0};
+    memcpy(modifier, data, 4 * sizeof(uint8_t));
+  }
+
+  size_t message_data_length = grid_data_length + scale_data_length + modifier_data_length;
   uint8_t message[message_data_length];
   memcpy(message, grid, grid_data_length * sizeof(uint8_t));
   memcpy(message + grid_data_length, scale, scale_data_length * sizeof(uint8_t));
+  memcpy(message + grid_data_length + scale_data_length, modifier, modifier_data_length * sizeof(uint8_t));
 
   write_launchpad_midi_message(launchpad_midi_output_stream, message, message_data_length);
 }
@@ -328,28 +373,33 @@ main (int32_t argc, char **argv) {
       int32_t status = Pm_MessageStatus(event.message);
       int32_t data1 = Pm_MessageData1(event.message);
       int32_t data2 = Pm_MessageData2(event.message);
+      printf("%d %d %d \n", status, data1, data2);
 
       if (data1 % 10 == 9) {
         state.scale = (uint8_t) (data1 / 10) - 1;
       }
 
       else if (status == NOTE_ON && data2 == 127) {
-        // uint8_t color = PURPLE;
-        // uint8_t data[] = {data1, color};
-        // write_launchpad_midi_message(launchpad_midi_output_stream, data, 2);
         state.pressed[point_to_int(midi_to_point(data1))] = true;
         send_chord_on(external_midi_output_stream, &state, midi_to_point(data1), chords);
+        state.last_pressed[0] = status;
+        state.last_pressed[1] = data1;
       }
 
       else if (status == NOTE_ON && data2 == 0) {
-        // uint8_t color = 0;
-        // uint8_t data[] = {data1, color};
-        // write_launchpad_midi_message(launchpad_midi_output_stream, data, 2);
         state.pressed[point_to_int(midi_to_point(data1))] = false;
         send_chord_off(external_midi_output_stream, &state, midi_to_point(data1), chords);
       }
 
-      render_state();
+      else if (status == CONTROL && data1 == 104 && data2 == 127) {
+        increase_chord_modifier(&state);
+      }
+
+      else if (status == CONTROL && data1 == 105 && data2 == 127) {
+        decrease_chord_modifier(&state);
+      }
+
+      render_state(&state);
     }
   }
 }
