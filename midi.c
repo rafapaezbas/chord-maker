@@ -300,7 +300,7 @@ render_state (State *state) {
   uint8_t scale[scale_data_length];
   uint8_t offset = 19;
   for (uint8_t i = 0; i < HEIGHT; i++) {
-    uint8_t color = state->scale == i ? PURPLE : 0;
+    uint8_t color = state->scale == i ? WHITE : 0;
     uint8_t data[] = {(i * 10) + offset, color};
     memcpy(scale + (i * 2), data, 2 * sizeof(uint8_t));
   }
