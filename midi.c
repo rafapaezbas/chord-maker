@@ -23,6 +23,7 @@
 
 // Color
 #define PURPLE 48
+#define WHITE  2
 
 uint8_t scales[SCALES_LENGTH][SCALE_LENGTH] = {
   {1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1},
@@ -50,6 +51,7 @@ typedef struct State {
   int32_t last_message;
   int32_t root;
   uint8_t scale;
+  bool pressed[64];
 } State;
 
 State state;
@@ -70,7 +72,7 @@ handle_sigint () {
 }
 
 Point
-int_to_point (uint8_t n) {
+midi_to_point (uint8_t n) { // Converts from launchpad midi position to grid point
   struct Point p;
   p.x = (n % 10) - 1;
   p.y = ((uint8_t) n / 10) - 1;
@@ -78,8 +80,21 @@ int_to_point (uint8_t n) {
 }
 
 uint8_t
-point_to_int (Point p) {
+point_to_midi (Point p) { // Converts from grid point to launchpad midi position
   return (p.y * 10) + p.x + 11;
+}
+
+uint8_t
+point_to_int (Point p) { // Converts from grid point to 1d array position
+  return (p.y * 8) + p.x;
+}
+
+Point
+int_to_point (uint8_t n) {
+  struct Point p;
+  p.x = (n % 8);
+  p.y = (uint8_t) n / 8;
+  return p;
 }
 
 void
@@ -250,8 +265,9 @@ render_state () {
   for (uint8_t x = 0; x < PAGE_WIDTH; x++) {
     for (uint8_t y = 0; y < PAGE_HEIGHT; y++) {
       Point p = {x, y};
-      uint8_t n = point_to_int(p);
-      uint8_t data[] = {n, x};
+      uint8_t n = point_to_midi(p);
+      uint8_t color = state.pressed[point_to_int(p)] ? PURPLE : WHITE;
+      uint8_t data[] = {n, color};
       memcpy(grid + (x * PAGE_WIDTH + y) * 2, data, 2 * sizeof(uint8_t));
     }
   }
@@ -321,14 +337,16 @@ main (int32_t argc, char **argv) {
         // uint8_t color = PURPLE;
         // uint8_t data[] = {data1, color};
         // write_launchpad_midi_message(launchpad_midi_output_stream, data, 2);
-        send_chord_on(external_midi_output_stream, &state, int_to_point(data1), chords);
+        state.pressed[point_to_int(midi_to_point(data1))] = true;
+        send_chord_on(external_midi_output_stream, &state, midi_to_point(data1), chords);
       }
 
       else if (status == NOTE_ON && data2 == 0) {
         // uint8_t color = 0;
         // uint8_t data[] = {data1, color};
         // write_launchpad_midi_message(launchpad_midi_output_stream, data, 2);
-        send_chord_off(external_midi_output_stream, &state, int_to_point(data1), chords);
+        state.pressed[point_to_int(midi_to_point(data1))] = false;
+        send_chord_off(external_midi_output_stream, &state, midi_to_point(data1), chords);
       }
 
       render_state();
