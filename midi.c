@@ -12,6 +12,7 @@
 #define NOTE_ON       144
 #define NOTE_OFF      128
 #define CONTROL       176
+#define CLIPBOARD     111
 #define HEADER_LENGTH 7
 #define EOX_LENGTH    1
 #define SCALES_LENGTH 6
@@ -59,7 +60,8 @@ typedef struct State {
   uint8_t scale;
   bool pressed[64];
   int8_t chord_modifier[64];
-  uint8_t last_pressed[2];
+  int8_t last_pressed[2];
+  int8_t clipboard;
 } State;
 
 State state;
@@ -143,10 +145,11 @@ init_state (State *state) {
   state->last_message = -1;
   state->scale = 0;
   state->running = true;
+  state->clipboard = -1;
+  state->last_pressed[0] = 0;
+  state->last_pressed[1] = -1;
   for (size_t i = 0; i < 64; i++)
     state->chord_modifier[i] = 0;
-  for (size_t i = 0; i < 2; i++)
-    state->last_pressed[i] = 0;
 }
 
 int32_t
@@ -220,6 +223,12 @@ read_midi_message (PmStream *stream, PmEvent *event, State *state) {
 }
 
 void
+flash_clipboard (PmStream *stream, uint8_t color) {
+  uint8_t msg[] = {240, 0, 32, 41, 2, 24, 40, 0, CLIPBOARD, color, 247};
+  Pm_WriteSysEx(stream, 0, msg);
+}
+
+void
 write_launchpad_midi_message (PmStream *stream, uint8_t *data, int32_t length) {
   uint8_t header[] = {240, 0, 32, 41, 2, 24, 10};
   uint8_t eox[] = {247};
@@ -287,6 +296,13 @@ decrease_chord_modifier (State *state) {
 }
 
 void
+copy_to_clipboard (State *state) {
+  Point point = midi_to_point(state->last_pressed[1]);
+  uint8_t n = point_to_int(point);
+  state->clipboard = n;
+}
+
+void
 render_state (State *state) {
   size_t grid_data_length = PAGE_WIDTH * PAGE_HEIGHT * 2;
   uint8_t grid[grid_data_length];
@@ -336,6 +352,13 @@ render_state (State *state) {
   memcpy(message + grid_data_length + scale_data_length, modifier, modifier_data_length * sizeof(uint8_t));
 
   write_launchpad_midi_message(launchpad_midi_output_stream, message, message_data_length);
+
+  if (state->clipboard != -1) {
+    uint8_t color = int_to_point(state->clipboard).x * int_to_point(state->clipboard).y + COLOR_OFFSET;
+    flash_clipboard(launchpad_midi_output_stream, color);
+  } else {
+    flash_clipboard(launchpad_midi_output_stream, 0);
+  }
 }
 
 int32_t
@@ -370,6 +393,8 @@ main (int32_t argc, char **argv) {
   uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH];
   create_page_chords(chords);
 
+  render_state(&state);
+
   // main loop
   while (state.running) {
     PmEvent event;
@@ -401,6 +426,10 @@ main (int32_t argc, char **argv) {
 
       else if (status == CONTROL && data1 == 105 && data2 == 127) {
         decrease_chord_modifier(&state);
+      }
+
+      else if (status == CONTROL && data1 == 111 && data2 == 127) {
+        copy_to_clipboard(&state);
       }
 
       render_state(&state);
