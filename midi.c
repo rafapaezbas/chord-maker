@@ -256,8 +256,10 @@ void
 send_chord_on (PmStream *stream, State *state, Point point, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
   uint8_t x = point.x;
   uint8_t y = point.y;
+  uint8_t n = point_to_int(point);
+  uint8_t modifier = state->chord_modifier[n] * 12;
   for (uint8_t i = 0; i < GRADE_LENGTH; i++) {
-    send_note_on(stream, chords[state->scale][x][y][i]);
+    send_note_on(stream, chords[state->scale][x][y][i] + modifier);
   }
 }
 
@@ -265,8 +267,10 @@ void
 send_chord_off (PmStream *stream, State *state, Point point, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
   uint8_t x = point.x;
   uint8_t y = point.y;
+  uint8_t n = point_to_int(point);
+  uint8_t modifier = state->chord_modifier[n] * 12;
   for (uint8_t i = 0; i < GRADE_LENGTH; i++) {
-    send_note_off(stream, chords[state->scale][x][y][i]);
+    send_note_off(stream, chords[state->scale][x][y][i] + modifier);
   }
 }
 
