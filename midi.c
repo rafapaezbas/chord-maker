@@ -53,6 +53,11 @@ PmStream *launchpad_midi_input_stream;
 PmStream *launchpad_midi_output_stream;
 PmStream *external_midi_output_stream;
 
+enum Mode {
+  CHORDS, // default
+  MELODIES
+};
+
 typedef struct State {
   bool running;
   int32_t last_message;
@@ -62,6 +67,7 @@ typedef struct State {
   int8_t chord_modifier[64];
   int8_t last_pressed[2];
   int8_t clipboard;
+  enum Mode mode;
 } State;
 
 State state;
@@ -345,11 +351,22 @@ render_state (State *state) {
     memcpy(modifier, data, 4 * sizeof(uint8_t));
   }
 
-  size_t message_data_length = grid_data_length + scale_data_length + modifier_data_length;
+  size_t mode_data_length = 2 * 2;
+  uint8_t mode[mode_data_length];
+  if (state->mode == CHORDS) {
+    uint8_t data[] = {106, WHITE, 107, 0};
+    memcpy(mode, data, 4 * sizeof(uint8_t));
+  } else {
+    uint8_t data[] = {106, 0, 107, WHITE};
+    memcpy(mode, data, 4 * sizeof(uint8_t));
+  }
+
+  size_t message_data_length = grid_data_length + scale_data_length + modifier_data_length + mode_data_length;
   uint8_t message[message_data_length];
   memcpy(message, grid, grid_data_length * sizeof(uint8_t));
   memcpy(message + grid_data_length, scale, scale_data_length * sizeof(uint8_t));
   memcpy(message + grid_data_length + scale_data_length, modifier, modifier_data_length * sizeof(uint8_t));
+  memcpy(message + grid_data_length + scale_data_length + modifier_data_length, mode, mode_data_length * sizeof(uint8_t));
 
   write_launchpad_midi_message(launchpad_midi_output_stream, message, message_data_length);
 
@@ -430,6 +447,14 @@ main (int32_t argc, char **argv) {
 
       else if (status == CONTROL && data1 == 111 && data2 == 127) {
         copy_to_clipboard(&state);
+      }
+
+      else if (status == CONTROL && data1 == 106 && data2 == 127) {
+        state.mode = CHORDS;
+      }
+
+      else if (status == CONTROL && data1 == 107 && data2 == 127) {
+        state.mode = MELODIES;
       }
 
       render_state(&state);
