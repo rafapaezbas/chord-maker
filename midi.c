@@ -354,10 +354,10 @@ render_state (State *state) {
   size_t mode_data_length = 2 * 2;
   uint8_t mode[mode_data_length];
   if (state->mode == CHORDS) {
-    uint8_t data[] = {106, WHITE, 107, 0};
+    uint8_t data[] = {109, WHITE, 110, 0};
     memcpy(mode, data, 4 * sizeof(uint8_t));
   } else {
-    uint8_t data[] = {106, 0, 107, WHITE};
+    uint8_t data[] = {109, 0, 110, WHITE};
     memcpy(mode, data, 4 * sizeof(uint8_t));
   }
 
@@ -421,7 +421,7 @@ main (int32_t argc, char **argv) {
       int32_t data2 = Pm_MessageData2(event.message);
       printf("%d %d %d \n", status, data1, data2);
 
-      if (data1 % 10 == 9) {
+      if (data1 % 10 == 9 && data1 < 100) {
         state.scale = (uint8_t) (data1 / 10) - 1;
       }
 
@@ -449,14 +449,13 @@ main (int32_t argc, char **argv) {
         copy_to_clipboard(&state);
       }
 
-      else if (status == CONTROL && data1 == 106 && data2 == 127) {
+      else if (status == CONTROL && data1 == 109 && data2 == 127) {
         state.mode = CHORDS;
       }
 
-      else if (status == CONTROL && data1 == 107 && data2 == 127) {
+      else if (status == CONTROL && data1 == 110 && data2 == 127) {
         state.mode = MELODIES;
       }
-
       render_state(&state);
     }
   }
