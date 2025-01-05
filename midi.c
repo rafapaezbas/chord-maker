@@ -470,7 +470,7 @@ handle_melodies_input (int32_t status, int32_t data1, int32_t data2, uint8_t cho
     uint8_t y = point.y;
     MelodyChord melodyChord = state.melodies_chords[x];
     if (melodyChord.chord != 0) {
-      uint8_t modifier = melodyChord.modifier;
+      uint8_t modifier = melodyChord.modifier * 12;
       uint8_t scale = melodyChord.scale;
       Point chord_point = int_to_point(melodyChord.chord);
       if (data2 == 127) send_note_on(external_midi_output_stream, chords[scale][chord_point.x][chord_point.y][(y - 1) % GRADE_LENGTH] + modifier);
