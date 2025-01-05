@@ -68,6 +68,7 @@ typedef struct State {
   int8_t last_pressed[2];
   int8_t clipboard;
   enum Mode mode;
+  uint8_t melodies_chords[8];
 } State;
 
 State state;
@@ -156,6 +157,8 @@ init_state (State *state) {
   state->last_pressed[1] = -1;
   for (size_t i = 0; i < 64; i++)
     state->chord_modifier[i] = 0;
+  for (size_t i = 0; i < 8; i++)
+    state->melodies_chords[i] = 0;
 }
 
 int32_t
@@ -309,7 +312,27 @@ copy_to_clipboard (State *state) {
 }
 
 void
-render_state (State *state) {
+render_melodies_state (State *state) {
+  size_t grid_data_length = PAGE_WIDTH * PAGE_HEIGHT * 2;
+  uint8_t grid[grid_data_length];
+  for (uint8_t x = 0; x < PAGE_WIDTH; x++) {
+    for (uint8_t y = 0; y < PAGE_HEIGHT; y++) {
+      Point p = {x, y};
+      uint8_t n = point_to_midi(p);
+      uint8_t color = state->melodies_chords[x] != 0 ? PURPLE : WHITE; // TODO
+      uint8_t data[] = {n, color};
+      memcpy(grid + (x * PAGE_WIDTH + y) * 2, data, 2 * sizeof(uint8_t));
+    }
+  }
+
+  size_t message_data_length = grid_data_length;
+  uint8_t message[message_data_length];
+  memcpy(message, grid, grid_data_length * sizeof(uint8_t));
+  write_launchpad_midi_message(launchpad_midi_output_stream, message, message_data_length);
+}
+
+void
+render_chords_state (State *state) {
   size_t grid_data_length = PAGE_WIDTH * PAGE_HEIGHT * 2;
   uint8_t grid[grid_data_length];
   for (uint8_t x = 0; x < PAGE_WIDTH; x++) {
@@ -378,6 +401,47 @@ render_state (State *state) {
   }
 }
 
+void
+render_state (State *state) {
+  if (state->mode == CHORDS) {
+    render_chords_state(state);
+  }
+  if (state->mode == MELODIES) {
+    render_melodies_state(state);
+  }
+}
+
+void
+handle_chords_input (int32_t status, int32_t data1, int32_t data2, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
+  if (data1 % 10 == 9 && data1 < 100) {
+    state.scale = (uint8_t) (data1 / 10) - 1;
+  }
+
+  else if (status == NOTE_ON && data2 == 127) {
+    state.pressed[point_to_int(midi_to_point(data1))] = true;
+    send_chord_on(external_midi_output_stream, &state, midi_to_point(data1), chords);
+    state.last_pressed[0] = status;
+    state.last_pressed[1] = data1;
+  }
+
+  else if (status == NOTE_ON && data2 == 0) {
+    state.pressed[point_to_int(midi_to_point(data1))] = false;
+    send_chord_off(external_midi_output_stream, &state, midi_to_point(data1), chords);
+  }
+
+  else if (status == CONTROL && data1 == 104 && data2 == 127) {
+    increase_chord_modifier(&state);
+  }
+
+  else if (status == CONTROL && data1 == 105 && data2 == 127) {
+    decrease_chord_modifier(&state);
+  }
+
+  else if (status == CONTROL && data1 == 111 && data2 == 127) {
+    copy_to_clipboard(&state);
+  }
+}
+
 int32_t
 main (int32_t argc, char **argv) {
   // Register the signal handler for SIGINT
@@ -421,39 +485,17 @@ main (int32_t argc, char **argv) {
       int32_t data2 = Pm_MessageData2(event.message);
       printf("%d %d %d \n", status, data1, data2);
 
-      if (data1 % 10 == 9 && data1 < 100) {
-        state.scale = (uint8_t) (data1 / 10) - 1;
+      if (state.mode == CHORDS) {
+        handle_chords_input(status, data1, data2, chords);
+      } else {
+        // handle_melodies_input();
       }
 
-      else if (status == NOTE_ON && data2 == 127) {
-        state.pressed[point_to_int(midi_to_point(data1))] = true;
-        send_chord_on(external_midi_output_stream, &state, midi_to_point(data1), chords);
-        state.last_pressed[0] = status;
-        state.last_pressed[1] = data1;
-      }
-
-      else if (status == NOTE_ON && data2 == 0) {
-        state.pressed[point_to_int(midi_to_point(data1))] = false;
-        send_chord_off(external_midi_output_stream, &state, midi_to_point(data1), chords);
-      }
-
-      else if (status == CONTROL && data1 == 104 && data2 == 127) {
-        increase_chord_modifier(&state);
-      }
-
-      else if (status == CONTROL && data1 == 105 && data2 == 127) {
-        decrease_chord_modifier(&state);
-      }
-
-      else if (status == CONTROL && data1 == 111 && data2 == 127) {
-        copy_to_clipboard(&state);
-      }
-
-      else if (status == CONTROL && data1 == 109 && data2 == 127) {
+      if (status == CONTROL && data1 == 109 && data2 == 127) {
         state.mode = CHORDS;
       }
 
-      else if (status == CONTROL && data1 == 110 && data2 == 127) {
+      if (status == CONTROL && data1 == 110 && data2 == 127) {
         state.mode = MELODIES;
       }
       render_state(&state);
