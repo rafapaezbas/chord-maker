@@ -58,6 +58,12 @@ enum Mode {
   MELODIES
 };
 
+typedef struct MelodyChord {
+  uint8_t chord;
+  uint8_t scale;
+  uint8_t modifier;
+} MelodyChord;
+
 typedef struct State {
   bool running;
   int32_t last_message;
@@ -68,7 +74,7 @@ typedef struct State {
   int8_t last_pressed[2];
   int8_t clipboard;
   enum Mode mode;
-  uint8_t melodies_chords[8];
+  MelodyChord melodies_chords[8];
 } State;
 
 State state;
@@ -158,7 +164,7 @@ init_state (State *state) {
   for (size_t i = 0; i < 64; i++)
     state->chord_modifier[i] = 0;
   for (size_t i = 0; i < 8; i++)
-    state->melodies_chords[i] = 0;
+    state->melodies_chords[i].chord = 0;
 }
 
 int32_t
@@ -319,7 +325,8 @@ render_melodies_state (State *state) {
     for (uint8_t y = 0; y < PAGE_HEIGHT; y++) {
       Point p = {x, y};
       uint8_t n = point_to_midi(p);
-      uint8_t color = state->melodies_chords[x] != 0 ? PURPLE : WHITE; // TODO
+      uint8_t chord = state->melodies_chords[x].chord;
+      uint8_t color = chord != 0 ? int_to_point(chord).x * int_to_point(chord).y + COLOR_OFFSET : WHITE; // TODO
       uint8_t data[] = {n, color};
       memcpy(grid + (x * PAGE_WIDTH + y) * 2, data, 2 * sizeof(uint8_t));
     }
@@ -450,7 +457,9 @@ handle_melodies_input (int32_t status, int32_t data1, int32_t data2, uint8_t cho
   if (data1 < 19 && data2 == 127) {
     if (state.clipboard > -1) {
       uint8_t chord_n = data1 - 11;
-      state.melodies_chords[chord_n] = state.clipboard;
+      state.melodies_chords[chord_n].chord = state.clipboard;
+      state.melodies_chords[chord_n].scale = state.scale;
+      state.melodies_chords[chord_n].modifier = state.chord_modifier[state.clipboard];
       state.clipboard = -1;
     }
   }
