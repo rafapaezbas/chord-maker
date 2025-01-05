@@ -374,31 +374,13 @@ render_chords_state (State *state) {
     memcpy(modifier, data, 4 * sizeof(uint8_t));
   }
 
-  size_t mode_data_length = 2 * 2;
-  uint8_t mode[mode_data_length];
-  if (state->mode == CHORDS) {
-    uint8_t data[] = {109, WHITE, 110, 0};
-    memcpy(mode, data, 4 * sizeof(uint8_t));
-  } else {
-    uint8_t data[] = {109, 0, 110, WHITE};
-    memcpy(mode, data, 4 * sizeof(uint8_t));
-  }
-
-  size_t message_data_length = grid_data_length + scale_data_length + modifier_data_length + mode_data_length;
+  size_t message_data_length = grid_data_length + scale_data_length + modifier_data_length;
   uint8_t message[message_data_length];
   memcpy(message, grid, grid_data_length * sizeof(uint8_t));
   memcpy(message + grid_data_length, scale, scale_data_length * sizeof(uint8_t));
   memcpy(message + grid_data_length + scale_data_length, modifier, modifier_data_length * sizeof(uint8_t));
-  memcpy(message + grid_data_length + scale_data_length + modifier_data_length, mode, mode_data_length * sizeof(uint8_t));
 
   write_launchpad_midi_message(launchpad_midi_output_stream, message, message_data_length);
-
-  if (state->clipboard != -1) {
-    uint8_t color = int_to_point(state->clipboard).x * int_to_point(state->clipboard).y + COLOR_OFFSET;
-    flash_clipboard(launchpad_midi_output_stream, color);
-  } else {
-    flash_clipboard(launchpad_midi_output_stream, 0);
-  }
 }
 
 void
@@ -408,6 +390,27 @@ render_state (State *state) {
   }
   if (state->mode == MELODIES) {
     render_melodies_state(state);
+  }
+
+  size_t mode_data_length = 2 * 2;
+  uint8_t mode[mode_data_length];
+  if (state->mode == CHORDS) {
+    uint8_t data[] = {109, WHITE, 110, 0};
+    memcpy(mode, data, 4 * sizeof(uint8_t));
+  } else {
+    uint8_t data[] = {109, 0, 110, WHITE};
+    memcpy(mode, data, 4 * sizeof(uint8_t));
+  }
+  size_t message_data_length = mode_data_length;
+  uint8_t message[message_data_length];
+  memcpy(message, mode, mode_data_length * sizeof(uint8_t));
+  write_launchpad_midi_message(launchpad_midi_output_stream, message, message_data_length);
+
+  if (state->clipboard != -1) {
+    uint8_t color = int_to_point(state->clipboard).x * int_to_point(state->clipboard).y + COLOR_OFFSET;
+    flash_clipboard(launchpad_midi_output_stream, color);
+  } else {
+    flash_clipboard(launchpad_midi_output_stream, 0);
   }
 }
 
@@ -439,6 +442,17 @@ handle_chords_input (int32_t status, int32_t data1, int32_t data2, uint8_t chord
 
   else if (status == CONTROL && data1 == 111 && data2 == 127) {
     copy_to_clipboard(&state);
+  }
+}
+
+void
+handle_melodies_input (int32_t status, int32_t data1, int32_t data2, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
+  if (data1 < 19 && data2 == 127) {
+    if (state.clipboard > -1) {
+      uint8_t chord_n = data1 - 11;
+      state.melodies_chords[chord_n] = state.clipboard;
+      state.clipboard = -1;
+    }
   }
 }
 
@@ -488,7 +502,7 @@ main (int32_t argc, char **argv) {
       if (state.mode == CHORDS) {
         handle_chords_input(status, data1, data2, chords);
       } else {
-        // handle_melodies_input();
+        handle_melodies_input(status, data1, data2, chords);
       }
 
       if (status == CONTROL && data1 == 109 && data2 == 127) {
