@@ -463,6 +463,20 @@ handle_melodies_input (int32_t status, int32_t data1, int32_t data2, uint8_t cho
       state.clipboard = -1;
     }
   }
+
+  if (data1 % 10 != 9 && data1 > 19 && data1 < 100) {
+    Point point = midi_to_point(data1);
+    uint8_t x = point.x;
+    uint8_t y = point.y;
+    MelodyChord melodyChord = state.melodies_chords[x];
+    if (melodyChord.chord != 0) {
+      uint8_t modifier = melodyChord.modifier;
+      uint8_t scale = melodyChord.scale;
+      Point chord_point = int_to_point(melodyChord.chord);
+      if (data2 == 127) send_note_on(external_midi_output_stream, chords[scale][chord_point.x][chord_point.y][(y - 1) % GRADE_LENGTH] + modifier);
+      if (data2 == 0) send_note_off(external_midi_output_stream, chords[scale][chord_point.x][chord_point.y][(y - 1) % GRADE_LENGTH] + modifier);
+    }
+  }
 }
 
 int32_t
