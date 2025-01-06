@@ -262,6 +262,7 @@ write_launchpad_set_all_midi_message (PmStream *stream, uint8_t color) {
 
 void
 send_note_on (PmStream *stream, uint8_t note) {
+  printf("sending note on: %d\n", note);
   PmEvent note_on_event;
   note_on_event.message = Pm_Message(NOTE_ON, note, 127);
   note_on_event.timestamp = 0;
@@ -270,6 +271,7 @@ send_note_on (PmStream *stream, uint8_t note) {
 
 void
 send_note_off (PmStream *stream, uint8_t note) {
+  printf("sending note off: %d\n", note);
   PmEvent note_on_event;
   note_on_event.message = Pm_Message(NOTE_OFF, note, 0);
   note_on_event.timestamp = 0;
@@ -325,7 +327,7 @@ render_melodies_state (State *state) {
     for (uint8_t y = 0; y < PAGE_HEIGHT; y++) {
       Point p = {x, y};
       uint8_t n = point_to_midi(p);
-      uint8_t chord = state->melodies_chords[x].chord;
+      uint8_t chord = state->melodies_chords[y].chord;
       uint8_t color = chord != 0 ? int_to_point(chord).x * int_to_point(chord).y + COLOR_OFFSET : WHITE; // TODO
       uint8_t data[] = {n, color};
       memcpy(grid + (x * PAGE_WIDTH + y) * 2, data, 2 * sizeof(uint8_t));
@@ -454,27 +456,25 @@ handle_chords_input (int32_t status, int32_t data1, int32_t data2, uint8_t chord
 
 void
 handle_melodies_input (int32_t status, int32_t data1, int32_t data2, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
-  if (data1 < 19 && data2 == 127) {
-    if (state.clipboard > -1) {
-      uint8_t chord_n = data1 - 11;
-      state.melodies_chords[chord_n].chord = state.clipboard;
-      state.melodies_chords[chord_n].scale = state.scale;
-      state.melodies_chords[chord_n].modifier = state.chord_modifier[state.clipboard];
-      state.clipboard = -1;
-    }
+  if (data1 < 100 && data1 % 10 == 1 && data2 == 127 && state.clipboard > -1) {
+    uint8_t chord_n = (data1 / 10) - 1;
+    state.melodies_chords[chord_n].chord = state.clipboard;
+    state.melodies_chords[chord_n].scale = state.scale;
+    state.melodies_chords[chord_n].modifier = state.chord_modifier[state.clipboard];
+    state.clipboard = -1;
   }
 
-  if (data1 % 10 != 9 && data1 > 19 && data1 < 100) {
+  if (data1 < 100 && state.clipboard == -1) {
     Point point = midi_to_point(data1);
     uint8_t x = point.x;
     uint8_t y = point.y;
-    MelodyChord melodyChord = state.melodies_chords[x];
+    MelodyChord melodyChord = state.melodies_chords[y];
     if (melodyChord.chord != 0) {
       uint8_t modifier = melodyChord.modifier * 12;
       uint8_t scale = melodyChord.scale;
       Point chord_point = int_to_point(melodyChord.chord);
-      if (data2 == 127) send_note_on(external_midi_output_stream, chords[scale][chord_point.x][chord_point.y][(y - 1) % GRADE_LENGTH] + modifier);
-      if (data2 == 0) send_note_off(external_midi_output_stream, chords[scale][chord_point.x][chord_point.y][(y - 1) % GRADE_LENGTH] + modifier);
+      if (data2 == 127) send_note_on(external_midi_output_stream, chords[scale][chord_point.x][chord_point.y][(x) % GRADE_LENGTH] + modifier);
+      if (data2 == 0) send_note_off(external_midi_output_stream, chords[scale][chord_point.x][chord_point.y][(x) % GRADE_LENGTH] + modifier);
     }
   }
 }
