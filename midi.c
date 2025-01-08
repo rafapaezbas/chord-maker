@@ -133,8 +133,8 @@ get_notes (uint8_t *notes, uint8_t scale, uint8_t grade) {
   }
 
   for (uint8_t i = 0; i < GRADE_LENGTH; i++) {
-    uint8_t offset = grades[grade][i] > 7 ? 1 : 0;
-    notes[i] = b[(grades[grade][i] - 1) % CHORD_VOICES] + 12 * offset;
+    uint8_t offset = (grades[grade][i] - 1) / 7;
+    notes[i] = b[(grades[grade][i] - 1) % CHORD_VOICES] + (12 * offset);
   }
 }
 
