@@ -18,7 +18,7 @@
 #define SCALES_LENGTH 6
 #define SCALE_LENGTH  12
 #define GRADES_LENGTH 7
-#define GRADE_LENGTH  5
+#define GRADE_LENGTH  7
 #define PAGE_WIDTH    8
 #define PAGE_HEIGHT   8
 #define ROOT          60
@@ -41,13 +41,13 @@ uint8_t scales[SCALES_LENGTH][SCALE_LENGTH] = {
   {1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 1}};
 
 uint8_t grades[GRADES_LENGTH][CHORD_VOICES] = {
-  {1, 3, 5, 7, 9},
-  {2, 4, 6, 8, 10},
-  {3, 5, 7, 9, 11},
-  {4, 6, 8, 10, 12},
-  {5, 7, 9, 11, 13},
-  {6, 8, 10, 12, 14},
-  {7, 9, 11, 13, 15}};
+  {1, 3, 5, 7, 9, 11, 6},
+  {2, 4, 6, 8, 10, 12, 7},
+  {3, 5, 7, 9, 11, 13, 8},
+  {4, 6, 8, 10, 12, 14, 9},
+  {5, 7, 9, 11, 13, 15, 10},
+  {6, 8, 10, 12, 14, 16, 11},
+  {7, 9, 11, 13, 15, 17, 12}};
 
 PmStream *launchpad_midi_input_stream;
 PmStream *launchpad_midi_output_stream;
@@ -284,7 +284,7 @@ send_chord_on (PmStream *stream, State *state, Point point, uint8_t chords[SCALE
   uint8_t y = point.y;
   uint8_t n = point_to_int(point);
   uint8_t modifier = state->chord_modifier[n] * 12;
-  for (uint8_t i = 0; i < GRADE_LENGTH; i++) {
+  for (uint8_t i = 0; i < GRADE_LENGTH - 2; i++) { // dont send 11th and 6th
     send_note_on(stream, chords[state->scale][x][y][i] + modifier);
   }
 }
@@ -295,7 +295,7 @@ send_chord_off (PmStream *stream, State *state, Point point, uint8_t chords[SCAL
   uint8_t y = point.y;
   uint8_t n = point_to_int(point);
   uint8_t modifier = state->chord_modifier[n] * 12;
-  for (uint8_t i = 0; i < GRADE_LENGTH; i++) {
+  for (uint8_t i = 0; i < GRADE_LENGTH - 2; i++) {
     send_note_off(stream, chords[state->scale][x][y][i] + modifier);
   }
 }
