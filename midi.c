@@ -320,7 +320,7 @@ copy_to_clipboard (State *state) {
 }
 
 void
-render_melodies_state (State *state) {
+render_melodies_state (State *state, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
   size_t grid_data_length = PAGE_WIDTH * PAGE_HEIGHT * 2;
   uint8_t grid[grid_data_length];
   for (uint8_t x = 0; x < PAGE_WIDTH; x++) {
@@ -328,7 +328,9 @@ render_melodies_state (State *state) {
       Point p = {x, y};
       uint8_t n = point_to_midi(p);
       uint8_t chord = state->melodies_chords[y].chord;
-      uint8_t color = chord != 0 ? int_to_point(chord).x * int_to_point(chord).y + COLOR_OFFSET : WHITE; // TODO
+      uint8_t scale = state->melodies_chords[y].scale;
+      uint8_t note_color = (chords[scale][int_to_point(chord).x][int_to_point(chord).y][(x) % GRADE_LENGTH] % 12) + COLOR_OFFSET;
+      uint8_t color = chord != 0 ? note_color : WHITE;
       uint8_t data[] = {n, color};
       memcpy(grid + (x * PAGE_WIDTH + y) * 2, data, 2 * sizeof(uint8_t));
     }
@@ -393,12 +395,12 @@ render_chords_state (State *state) {
 }
 
 void
-render_state (State *state) {
+render_state (State *state, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
   if (state->mode == CHORDS) {
     render_chords_state(state);
   }
   if (state->mode == MELODIES) {
-    render_melodies_state(state);
+    render_melodies_state(state, chords);
   }
 
   size_t mode_data_length = 2 * 2;
@@ -511,7 +513,7 @@ main (int32_t argc, char **argv) {
   uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH];
   create_page_chords(chords);
 
-  render_state(&state);
+  render_state(&state, chords);
 
   // main loop
   while (state.running) {
@@ -535,7 +537,7 @@ main (int32_t argc, char **argv) {
       if (status == CONTROL && data1 == 110 && data2 == 127) {
         state.mode = MELODIES;
       }
-      render_state(&state);
+      render_state(&state, chords);
     }
   }
 }
