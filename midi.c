@@ -76,6 +76,7 @@ typedef struct State {
   int8_t clipboard;
   enum Mode mode;
   MelodyChord melodies_chords[8];
+  uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH];
 } State;
 
 State state;
@@ -140,14 +141,14 @@ get_notes (uint8_t *notes, uint8_t scale, uint8_t grade) {
 }
 
 void
-create_page_chords (uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
+create_page_chords () {
   for (int i = 0; i < SCALES_LENGTH; i++) {
     for (int j = 0; j < WIDTH; j++) {
       for (int k = 0; k < GRADES_LENGTH; k++) {
         uint8_t notes[GRADE_LENGTH];
         get_notes(notes, i, k);
         for (int l = 0; l < GRADE_LENGTH; l++) {
-          chords[i][j][k][l] = notes[l] + j;
+          state.chords[i][j][k][l] = notes[l] + j;
         }
       }
     }
@@ -155,17 +156,17 @@ create_page_chords (uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LE
 }
 
 void
-init_state (State *state) {
-  state->last_message = -1;
-  state->scale = 0;
-  state->running = true;
-  state->clipboard = -1;
-  state->last_pressed[0] = 0;
-  state->last_pressed[1] = -1;
+init_state () {
+  state.last_message = -1;
+  state.scale = 0;
+  state.running = true;
+  state.clipboard = -1;
+  state.last_pressed[0] = 0;
+  state.last_pressed[1] = -1;
   for (size_t i = 0; i < 64; i++)
-    state->chord_modifier[i] = 0;
+    state.chord_modifier[i] = 0;
   for (size_t i = 0; i < 8; i++)
-    state->melodies_chords[i].chord = 0;
+    state.melodies_chords[i].chord = 0;
 }
 
 int32_t
@@ -220,18 +221,18 @@ init_midi_output_stream (PmStream **stream, uint8_t output_device_id) {
 }
 
 bool
-read_midi_message (PmStream *stream, PmEvent *event, State *state) {
+read_midi_message (PmStream *stream, PmEvent *event) {
   bool new_message = false;
   Pm_Read(stream, event, 1); // Read one event
 
   // initialize last_message
-  if (state->last_message == -1) {
-    state->last_message = event->message;
+  if (state.last_message == -1) {
+    state.last_message = event->message;
   }
 
   // since launchpad can't send twice in a row the same message, checks there is a new message
-  if (state->last_message != (int32_t) event->message && state->last_message != -1) {
-    state->last_message = event->message;
+  if (state.last_message != (int32_t) event->message && state.last_message != -1) {
+    state.last_message = event->message;
     new_message = true;
   }
 
@@ -280,57 +281,57 @@ send_note_off (PmStream *stream, uint8_t note) {
 }
 
 void
-send_chord_on (PmStream *stream, State *state, Point point, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
+send_chord_on (PmStream *stream, Point point) {
   uint8_t x = point.x;
   uint8_t y = point.y;
   uint8_t n = point_to_int(point);
-  uint8_t modifier = state->chord_modifier[n] * 12;
+  uint8_t modifier = state.chord_modifier[n] * 12;
   for (uint8_t i = 0; i < GRADE_LENGTH - 2; i++) { // dont send 11th and 6th
-    send_note_on(stream, chords[state->scale][x][y][i] + modifier);
+    send_note_on(stream, state.chords[state.scale][x][y][i] + modifier);
   }
 }
 
 void
-send_chord_off (PmStream *stream, State *state, Point point, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
+send_chord_off (PmStream *stream, Point point) {
   uint8_t x = point.x;
   uint8_t y = point.y;
   uint8_t n = point_to_int(point);
-  uint8_t modifier = state->chord_modifier[n] * 12;
+  uint8_t modifier = state.chord_modifier[n] * 12;
   for (uint8_t i = 0; i < GRADE_LENGTH - 2; i++) {
-    send_note_off(stream, chords[state->scale][x][y][i] + modifier);
+    send_note_off(stream, state.chords[state.scale][x][y][i] + modifier);
   }
 }
 
 void
-increase_chord_modifier (State *state) {
-  uint8_t n = point_to_int(midi_to_point(state->last_pressed[1]));
-  state->chord_modifier[n] = MIN(state->chord_modifier[n] + 1, 2);
+increase_chord_modifier () {
+  uint8_t n = point_to_int(midi_to_point(state.last_pressed[1]));
+  state.chord_modifier[n] = MIN(state.chord_modifier[n] + 1, 2);
 }
 
 void
-decrease_chord_modifier (State *state) {
-  uint8_t n = point_to_int(midi_to_point(state->last_pressed[1]));
-  state->chord_modifier[n] = MAX(state->chord_modifier[n] - 1, -2);
+decrease_chord_modifier () {
+  uint8_t n = point_to_int(midi_to_point(state.last_pressed[1]));
+  state.chord_modifier[n] = MAX(state.chord_modifier[n] - 1, -2);
 }
 
 void
-copy_to_clipboard (State *state) {
-  Point point = midi_to_point(state->last_pressed[1]);
+copy_to_clipboard () {
+  Point point = midi_to_point(state.last_pressed[1]);
   uint8_t n = point_to_int(point);
-  state->clipboard = n;
+  state.clipboard = n;
 }
 
 void
-render_melodies_state (State *state, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
+render_melodies_state () {
   size_t grid_data_length = PAGE_WIDTH * PAGE_HEIGHT * 2;
   uint8_t grid[grid_data_length];
   for (uint8_t x = 0; x < PAGE_WIDTH; x++) {
     for (uint8_t y = 0; y < PAGE_HEIGHT; y++) {
       Point p = {x, y};
       uint8_t n = point_to_midi(p);
-      uint8_t chord = state->melodies_chords[y].chord;
-      uint8_t scale = state->melodies_chords[y].scale;
-      uint8_t note_color = ((chords[scale][int_to_point(chord).x][int_to_point(chord).y][(x) % GRADE_LENGTH] % 12) * COLOR_VARIATION) + COLOR_OFFSET;
+      uint8_t chord = state.melodies_chords[y].chord;
+      uint8_t scale = state.melodies_chords[y].scale;
+      uint8_t note_color = ((state.chords[scale][int_to_point(chord).x][int_to_point(chord).y][(x) % GRADE_LENGTH] % 12) * COLOR_VARIATION) + COLOR_OFFSET;
       uint8_t color = chord != 0 ? note_color : WHITE;
       uint8_t data[] = {n, color};
       memcpy(grid + (x * PAGE_WIDTH + y) * 2, data, 2 * sizeof(uint8_t));
@@ -344,14 +345,14 @@ render_melodies_state (State *state, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES
 }
 
 void
-render_chords_state (State *state) {
+render_chords_state () {
   size_t grid_data_length = PAGE_WIDTH * PAGE_HEIGHT * 2;
   uint8_t grid[grid_data_length];
   for (uint8_t x = 0; x < PAGE_WIDTH; x++) {
     for (uint8_t y = 0; y < PAGE_HEIGHT; y++) {
       Point p = {x, y};
       uint8_t n = point_to_midi(p);
-      uint8_t color = state->pressed[point_to_int(p)] ? PURPLE : x * y + COLOR_OFFSET; // root color or plain?
+      uint8_t color = state.pressed[point_to_int(p)] ? PURPLE : x * y + COLOR_OFFSET; // root color or plain?
       uint8_t data[] = {n, color};
       memcpy(grid + (x * PAGE_WIDTH + y) * 2, data, 2 * sizeof(uint8_t));
     }
@@ -361,24 +362,24 @@ render_chords_state (State *state) {
   uint8_t scale[scale_data_length];
   uint8_t offset = 19;
   for (uint8_t i = 0; i < HEIGHT; i++) {
-    uint8_t color = state->scale == i ? WHITE : 0;
+    uint8_t color = state.scale == i ? WHITE : 0;
     uint8_t data[] = {(i * 10) + offset, color};
     memcpy(scale + (i * 2), data, 2 * sizeof(uint8_t));
   }
 
   size_t modifier_data_length = 2 * 2;
   uint8_t modifier[scale_data_length];
-  uint8_t n = point_to_int(midi_to_point(state->last_pressed[1]));
-  if (state->chord_modifier[n] == 2) {
+  uint8_t n = point_to_int(midi_to_point(state.last_pressed[1]));
+  if (state.chord_modifier[n] == 2) {
     uint8_t data[] = {104, BLUE, 105, 0};
     memcpy(modifier, data, 4 * sizeof(uint8_t));
-  } else if (state->chord_modifier[n] == 1) {
+  } else if (state.chord_modifier[n] == 1) {
     uint8_t data[] = {104, WHITE, 105, 0};
     memcpy(modifier, data, 4 * sizeof(uint8_t));
-  } else if (state->chord_modifier[n] == -1) {
+  } else if (state.chord_modifier[n] == -1) {
     uint8_t data[] = {104, 0, 105, WHITE};
     memcpy(modifier, data, 4 * sizeof(uint8_t));
-  } else if (state->chord_modifier[n] == -2) {
+  } else if (state.chord_modifier[n] == -2) {
     uint8_t data[] = {104, 0, 105, BLUE};
     memcpy(modifier, data, 4 * sizeof(uint8_t));
   } else {
@@ -396,17 +397,17 @@ render_chords_state (State *state) {
 }
 
 void
-render_state (State *state, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
-  if (state->mode == CHORDS) {
-    render_chords_state(state);
+render_state () {
+  if (state.mode == CHORDS) {
+    render_chords_state();
   }
-  if (state->mode == MELODIES) {
-    render_melodies_state(state, chords);
+  if (state.mode == MELODIES) {
+    render_melodies_state();
   }
 
   size_t mode_data_length = 2 * 2;
   uint8_t mode[mode_data_length];
-  if (state->mode == CHORDS) {
+  if (state.mode == CHORDS) {
     uint8_t data[] = {109, WHITE, 110, 0};
     memcpy(mode, data, 4 * sizeof(uint8_t));
   } else {
@@ -418,8 +419,8 @@ render_state (State *state, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][
   memcpy(message, mode, mode_data_length * sizeof(uint8_t));
   write_launchpad_midi_message(launchpad_midi_output_stream, message, message_data_length);
 
-  if (state->clipboard != -1) {
-    uint8_t color = int_to_point(state->clipboard).x * int_to_point(state->clipboard).y + COLOR_OFFSET;
+  if (state.clipboard != -1) {
+    uint8_t color = int_to_point(state.clipboard).x * int_to_point(state.clipboard).y + COLOR_OFFSET;
     flash_clipboard(launchpad_midi_output_stream, color);
   } else {
     flash_clipboard(launchpad_midi_output_stream, 0);
@@ -427,38 +428,38 @@ render_state (State *state, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][
 }
 
 void
-handle_chords_input (int32_t status, int32_t data1, int32_t data2, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
+handle_chords_input (int32_t status, int32_t data1, int32_t data2) {
   if (data1 % 10 == 9 && data1 < 100) {
     state.scale = (uint8_t) (data1 / 10) - 1;
   }
 
   else if (status == NOTE_ON && data2 == 127) {
     state.pressed[point_to_int(midi_to_point(data1))] = true;
-    send_chord_on(external_midi_output_stream, &state, midi_to_point(data1), chords);
+    send_chord_on(external_midi_output_stream, midi_to_point(data1));
     state.last_pressed[0] = status;
     state.last_pressed[1] = data1;
   }
 
   else if (status == NOTE_ON && data2 == 0) {
     state.pressed[point_to_int(midi_to_point(data1))] = false;
-    send_chord_off(external_midi_output_stream, &state, midi_to_point(data1), chords);
+    send_chord_off(external_midi_output_stream, midi_to_point(data1));
   }
 
   else if (status == CONTROL && data1 == 104 && data2 == 127) {
-    increase_chord_modifier(&state);
+    increase_chord_modifier();
   }
 
   else if (status == CONTROL && data1 == 105 && data2 == 127) {
-    decrease_chord_modifier(&state);
+    decrease_chord_modifier();
   }
 
   else if (status == CONTROL && data1 == 111 && data2 == 127) {
-    copy_to_clipboard(&state);
+    copy_to_clipboard();
   }
 }
 
 void
-handle_melodies_input (int32_t status, int32_t data1, int32_t data2, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH]) {
+handle_melodies_input (int32_t status, int32_t data1, int32_t data2) {
   if (data1 < 100 && data1 % 10 == 1 && data2 == 127 && state.clipboard > -1) {
     uint8_t chord_n = (data1 / 10) - 1;
     state.melodies_chords[chord_n].chord = state.clipboard;
@@ -476,8 +477,8 @@ handle_melodies_input (int32_t status, int32_t data1, int32_t data2, uint8_t cho
       uint8_t modifier = melodyChord.modifier * 12;
       uint8_t scale = melodyChord.scale;
       Point chord_point = int_to_point(melodyChord.chord);
-      if (data2 == 127) send_note_on(external_midi_output_stream, chords[scale][chord_point.x][chord_point.y][(x) % GRADE_LENGTH] + modifier);
-      if (data2 == 0) send_note_off(external_midi_output_stream, chords[scale][chord_point.x][chord_point.y][(x) % GRADE_LENGTH] + modifier);
+      if (data2 == 127) send_note_on(external_midi_output_stream, state.chords[scale][chord_point.x][chord_point.y][(x) % GRADE_LENGTH] + modifier);
+      if (data2 == 0) send_note_off(external_midi_output_stream, state.chords[scale][chord_point.x][chord_point.y][(x) % GRADE_LENGTH] + modifier);
     }
   }
 }
@@ -509,26 +510,25 @@ main (int32_t argc, char **argv) {
   init_midi_output_stream(&launchpad_midi_output_stream, launchpad_output_device_id);
   init_midi_output_stream(&external_midi_output_stream, external_output_device_id);
 
-  init_state(&state);
+  init_state();
 
-  uint8_t chords[SCALES_LENGTH][WIDTH][GRADES_LENGTH][GRADE_LENGTH];
-  create_page_chords(chords);
+  create_page_chords();
 
-  render_state(&state, chords);
+  render_state();
 
   // main loop
   while (state.running) {
     PmEvent event;
-    if (read_midi_message(launchpad_midi_input_stream, &event, &state)) {
+    if (read_midi_message(launchpad_midi_input_stream, &event)) {
       int32_t status = Pm_MessageStatus(event.message);
       int32_t data1 = Pm_MessageData1(event.message);
       int32_t data2 = Pm_MessageData2(event.message);
       printf("%d %d %d \n", status, data1, data2);
 
       if (state.mode == CHORDS) {
-        handle_chords_input(status, data1, data2, chords);
+        handle_chords_input(status, data1, data2);
       } else {
-        handle_melodies_input(status, data1, data2, chords);
+        handle_melodies_input(status, data1, data2);
       }
 
       if (status == CONTROL && data1 == 109 && data2 == 127) {
@@ -538,7 +538,7 @@ main (int32_t argc, char **argv) {
       if (status == CONTROL && data1 == 110 && data2 == 127) {
         state.mode = MELODIES;
       }
-      render_state(&state, chords);
+      render_state();
     }
   }
 }
