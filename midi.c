@@ -72,6 +72,8 @@ typedef struct State {
   uint8_t scale;
   bool pressed[64];
   int8_t chord_modifier[64];
+  int8_t note_modifier[64];
+  int8_t octave_modifier[64];
   int8_t last_pressed[2];
   int8_t clipboard;
   enum Mode mode;
@@ -315,6 +317,30 @@ decrease_chord_modifier () {
 }
 
 void
+increase_note_modifier () {
+  uint8_t n = point_to_int(midi_to_point(state.last_pressed[1]));
+  state.note_modifier[n] = MIN(state.note_modifier[n] + 1, 1);
+}
+
+void
+decrease_note_modifier () {
+  uint8_t n = point_to_int(midi_to_point(state.last_pressed[1]));
+  state.note_modifier[n] = MAX(state.note_modifier[n] - 1, -1);
+}
+
+void
+increase_octave_modifier () {
+  uint8_t n = point_to_int(midi_to_point(state.last_pressed[1]));
+  state.octave_modifier[n] = MIN(state.octave_modifier[n] + 12, 12);
+}
+
+void
+decrease_octave_modifier () {
+  uint8_t n = point_to_int(midi_to_point(state.last_pressed[1]));
+  state.octave_modifier[n] = MAX(state.octave_modifier[n] - 12, -12);
+}
+
+void
 copy_to_clipboard () {
   Point point = midi_to_point(state.last_pressed[1]);
   uint8_t n = point_to_int(point);
@@ -331,16 +357,47 @@ render_melodies_state () {
       uint8_t n = point_to_midi(p);
       uint8_t chord = state.melodies_chords[y].chord;
       uint8_t scale = state.melodies_chords[y].scale;
-      uint8_t note_color = ((state.chords[scale][int_to_point(chord).x][int_to_point(chord).y][(x) % GRADE_LENGTH] % 12) * COLOR_VARIATION) + COLOR_OFFSET;
+      int8_t modifier = state.note_modifier[point_to_int(p)];
+      uint8_t note_color = (((state.chords[scale][int_to_point(chord).x][int_to_point(chord).y][(x) % GRADE_LENGTH] + modifier) % 12) * COLOR_VARIATION) + COLOR_OFFSET;
       uint8_t color = chord != 0 ? note_color : WHITE;
       uint8_t data[] = {n, color};
       memcpy(grid + (x * PAGE_WIDTH + y) * 2, data, 2 * sizeof(uint8_t));
     }
   }
 
-  size_t message_data_length = grid_data_length;
+  uint8_t n = point_to_int(midi_to_point(state.last_pressed[1]));
+
+  size_t octave_modifier_data_length = 2 * 2;
+  uint8_t octave_modifier[octave_modifier_data_length];
+  if (state.octave_modifier[n] == 12) {
+    uint8_t data[] = {104, WHITE, 105, 0};
+    memcpy(octave_modifier, data, 4 * sizeof(uint8_t));
+  } else if (state.octave_modifier[n] == -12) {
+    uint8_t data[] = {104, 0, 105, WHITE};
+    memcpy(octave_modifier, data, 4 * sizeof(uint8_t));
+  } else {
+    uint8_t data[] = {104, 0, 105, 0};
+    memcpy(octave_modifier, data, 4 * sizeof(uint8_t));
+  }
+
+  size_t note_modifier_data_length = 2 * 2;
+  uint8_t note_modifier[note_modifier_data_length];
+  if (state.note_modifier[n] == -1) {
+    uint8_t data[] = {106, WHITE, 107, 0};
+    memcpy(note_modifier, data, 4 * sizeof(uint8_t));
+  } else if (state.note_modifier[n] == 1) {
+    uint8_t data[] = {106, 0, 107, WHITE};
+    memcpy(note_modifier, data, 4 * sizeof(uint8_t));
+  } else {
+    uint8_t data[] = {106, 0, 107, 0};
+    memcpy(note_modifier, data, 4 * sizeof(uint8_t));
+  }
+
+  size_t message_data_length = grid_data_length + octave_modifier_data_length + note_modifier_data_length;
   uint8_t message[message_data_length];
   memcpy(message, grid, grid_data_length * sizeof(uint8_t));
+  memcpy(message + grid_data_length, octave_modifier, octave_modifier_data_length * sizeof(uint8_t));
+  memcpy(message + grid_data_length + octave_modifier_data_length, note_modifier, note_modifier_data_length * sizeof(uint8_t));
   write_launchpad_midi_message(launchpad_midi_output_stream, message, message_data_length);
 }
 
@@ -368,7 +425,7 @@ render_chords_state () {
   }
 
   size_t modifier_data_length = 2 * 2;
-  uint8_t modifier[scale_data_length];
+  uint8_t modifier[modifier_data_length];
   uint8_t n = point_to_int(midi_to_point(state.last_pressed[1]));
   if (state.chord_modifier[n] == 2) {
     uint8_t data[] = {104, BLUE, 105, 0};
@@ -460,7 +517,7 @@ handle_chords_input (int32_t status, int32_t data1, int32_t data2) {
 
 void
 handle_melodies_input (int32_t status, int32_t data1, int32_t data2) {
-  if (data1 < 100 && data1 % 10 == 1 && data2 == 127 && state.clipboard > -1) {
+  if (status != CONTROL && data1 < 100 && data1 % 10 == 1 && data2 == 127 && state.clipboard > -1) {
     uint8_t chord_n = (data1 / 10) - 1;
     state.melodies_chords[chord_n].chord = state.clipboard;
     state.melodies_chords[chord_n].scale = state.scale;
@@ -468,18 +525,37 @@ handle_melodies_input (int32_t status, int32_t data1, int32_t data2) {
     state.clipboard = -1;
   }
 
-  if (data1 < 100 && state.clipboard == -1) {
+  if (status != CONTROL && data1 < 100 && data1 % 10 != 9 && state.clipboard == -1) {
     Point point = midi_to_point(data1);
     uint8_t x = point.x;
     uint8_t y = point.y;
     MelodyChord melodyChord = state.melodies_chords[y];
     if (melodyChord.chord != 0) {
-      uint8_t modifier = melodyChord.modifier * 12;
+      uint8_t modifier = (melodyChord.modifier * 12) + state.octave_modifier[point_to_int(point)] + state.note_modifier[point_to_int(point)];
       uint8_t scale = melodyChord.scale;
       Point chord_point = int_to_point(melodyChord.chord);
       if (data2 == 127) send_note_on(external_midi_output_stream, state.chords[scale][chord_point.x][chord_point.y][(x) % GRADE_LENGTH] + modifier);
       if (data2 == 0) send_note_off(external_midi_output_stream, state.chords[scale][chord_point.x][chord_point.y][(x) % GRADE_LENGTH] + modifier);
     }
+
+    state.last_pressed[0] = status;
+    state.last_pressed[1] = data1;
+  }
+
+  if (status == CONTROL && data1 == 104 && data2 == 127) {
+    increase_octave_modifier();
+  }
+
+  if (status == CONTROL && data1 == 105 && data2 == 127) {
+    decrease_octave_modifier();
+  }
+
+  if (status == CONTROL && data1 == 106 && data2 == 127) {
+    decrease_note_modifier();
+  }
+
+  if (status == CONTROL && data1 == 107 && data2 == 127) {
+    increase_note_modifier();
   }
 }
 
