@@ -27,10 +27,11 @@
 #define HEIGHT        8
 
 // Color
-#define PURPLE       48
-#define WHITE        2
-#define BLUE         39
-#define COLOR_OFFSET 10
+#define PURPLE          48
+#define WHITE           2
+#define BLUE            39
+#define COLOR_OFFSET    30
+#define COLOR_VARIATION 6 // How far colors are in melody render
 
 uint8_t scales[SCALES_LENGTH][SCALE_LENGTH] = {
   {1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1},
@@ -329,7 +330,7 @@ render_melodies_state (State *state, uint8_t chords[SCALES_LENGTH][WIDTH][GRADES
       uint8_t n = point_to_midi(p);
       uint8_t chord = state->melodies_chords[y].chord;
       uint8_t scale = state->melodies_chords[y].scale;
-      uint8_t note_color = (chords[scale][int_to_point(chord).x][int_to_point(chord).y][(x) % GRADE_LENGTH] % 12) + COLOR_OFFSET;
+      uint8_t note_color = ((chords[scale][int_to_point(chord).x][int_to_point(chord).y][(x) % GRADE_LENGTH] % 12) * COLOR_VARIATION) + COLOR_OFFSET;
       uint8_t color = chord != 0 ? note_color : WHITE;
       uint8_t data[] = {n, color};
       memcpy(grid + (x * PAGE_WIDTH + y) * 2, data, 2 * sizeof(uint8_t));
