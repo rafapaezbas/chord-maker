@@ -10,6 +10,18 @@ Chord-Maker is a MIDI utility designed for use with the Novation Launchpad MIDI 
 
 ## How It Works
 
+```
+.\midi list
+```
+
+Print a list of midi inputs and outputs and their id.
+
+```
+.\midi <launchpad_input_id> <launchpad_output_id> <target_output_id>
+```
+
+
+
 ### Chord View
 
 In Chord View, you can:
